@@ -2,25 +2,19 @@ package com.example.camelSpring;
 
 import com.example.camelSpring.bean.Convert;
 import org.apache.camel.Exchange;
+import org.apache.camel.LoggingLevel;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.dataformat.bindy.csv.BindyCsvDataFormat;
 import org.apache.camel.processor.aggregate.AggregationStrategy;
-import org.apache.camel.spi.DataFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.apache.camel.Converter;
-
-import org.apache.camel.TypeConverter;
-
-
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
 public class camelRouter extends RouteBuilder {
 
-    //final DataFormat bindy  = new BindyCsvDataFormat(LinkedHashMap.class);
+    static Logger LOGGER = LoggerFactory.getLogger(camelRouter.class);
 
     @Override
     public void configure() throws Exception {
@@ -39,6 +33,7 @@ public class camelRouter extends RouteBuilder {
                 .streamCaching() //Allows to read the exchange data multiple times because jsonpath only read once
                 .setProperty("batchId", jsonpath("$.batchId")) //to be able to use later
                 .split().jsonpath("$.records.*")
+                .log(LoggingLevel.INFO, LOGGER, "Records from batchId ${exchangeProperty[batchId]} were split")
                 .process(new Processor() {
                     @Override
                     public void process(Exchange exchange) throws Exception {
@@ -48,12 +43,12 @@ public class camelRouter extends RouteBuilder {
                         exchange.getIn().setBody(record);
                     }
                 })
+                .log(LoggingLevel.INFO, LOGGER, "Event was removed from record")
                 .bean(new Convert())
-                .to("direct:aggregate");
+                .log(LoggingLevel.INFO, LOGGER, "Record is successfully converted to csv")
+                .to("direct:aggregateNwrite");
 
-        //${exchangeProperty[batchId]}
-
-        from("direct:aggregate")
+        from("direct:aggregateNwrite")
                 .aggregate(new AggregationStrategy() {
                     @Override
                     public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
@@ -73,14 +68,8 @@ public class camelRouter extends RouteBuilder {
                 .header("fileType")
                 .completionInterval(60000)
                 .completionSize(10)
-                .process(new Processor() {
-                    @Override
-                    public void process(Exchange exchange) throws Exception {
-                        String record = exchange.getIn().getBody(String.class);
-                        System.out.println(record);
-                    }
-                })
-                .to("mock:fool");
+                .log(LoggingLevel.INFO, LOGGER, "CSV files were successfully aggregated")
+                .to("file://C:/Users/Edson/Desktop/out/?fileName=" + "${exchangeProperty[batchId]}" + ".txt/");
     }
 
 }
