@@ -5,6 +5,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.dataformat.bindy.csv.BindyCsvDataFormat;
+import org.apache.camel.processor.aggregate.AggregationStrategy;
 import org.apache.camel.spi.DataFormat;
 import org.springframework.stereotype.Component;
 import org.apache.camel.Converter;
@@ -47,15 +48,31 @@ public class camelRouter extends RouteBuilder {
                         exchange.getIn().setBody(record);
                     }
                 })
-                //.unmarshal(bindy)
-                //.bean(new Convert())
-                //TODO: convert to CSV
+                .bean(new Convert())
                 .to("direct:aggregate");
 
         //${exchangeProperty[batchId]}
 
         from("direct:aggregate")
-
+                .aggregate(new AggregationStrategy() {
+                    @Override
+                    public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
+                        if (oldExchange == null)
+                        {
+                            // the first time we only have the new exchange so it wins the first round
+                            return newExchange;
+                        }
+                        String oldData = oldExchange.getIn().getBody(String.class);
+                        String newData = newExchange.getIn().getBody(String.class);
+                        String[] newDataArray = newData.split("[\n]");
+                        oldData += '\n' + newDataArray[1];
+                        oldExchange.getIn().setBody(oldData);
+                        return oldExchange;
+                    }
+                })
+                .header("fileType")
+                .completionInterval(60000)
+                .completionSize(10)
                 .process(new Processor() {
                     @Override
                     public void process(Exchange exchange) throws Exception {
