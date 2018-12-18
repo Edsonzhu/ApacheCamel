@@ -51,6 +51,9 @@ public class camelRouter extends RouteBuilder {
         from("direct:aggregateNwrite")
                 .aggregate(new AggregationStrategy() {
                     @Override
+                    /**
+                     * Aggregate the CSV files creating a file with only only line of parameters name
+                     */
                     public Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
                         if (oldExchange == null)
                         {
@@ -69,7 +72,8 @@ public class camelRouter extends RouteBuilder {
                 .completionInterval(60000)
                 .completionSize(10)
                 .log(LoggingLevel.INFO, LOGGER, "CSV files were successfully aggregated")
-                .to("file://C:/Users/Edson/Desktop/out/?fileName=" + "${exchangeProperty[batchId]}" + ".txt/");
+                .to("mock:output");
+
     }
 
 }
